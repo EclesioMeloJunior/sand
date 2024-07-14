@@ -46,6 +46,10 @@ mod tests {
             Token::Ident(String::from("a")),
             Token::Assign,
             Token::Integer(10),
+            Token::Plus,
+            Token::Integer(10),
+            Token::Star,
+            Token::Integer(4),
         ];
 
         let mut program = Program::from(tokens);
@@ -55,7 +59,7 @@ mod tests {
         
         let mut peekable_program = program.peekable();
         let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
-        
+        println!("{:?}", stmts); 
     }
 }
 

@@ -1,37 +1,50 @@
 use std::iter::{Peekable, Iterator};
 use tokenizer::token::Token;
-use crate::ast::{Expression, Statement};
+use crate::ast::{Expression, Statement, Operator};
 
 #[derive(Debug)]
 pub enum Error {
     UnexpectedEnd,
     ExpectedIdent,
     EmptyExpression,
-    MissingAssignmentToken
+    MissingAssignmentToken,
+    HeadHandlerNotImplemented(Token),
+    TailHandlerNotImplemented(Token),
+    NonexistentPrecedence(Token),
 }
 
-type ParseResult<T> = Result<Option<T>, Error>;
+type ParseResult<T> = Result<T, Error>;
 
 pub trait TokenHandler<I> where I: Iterator<Item = Token> {
     fn head_handler(&self, program: &mut Peekable<I>) -> ParseResult<Expression>;
-    fn tail_handler(&self, program: &mut Peekable<I>, lhs: ParseResult<Expression>) -> ParseResult<Expression>;
-    fn precedence(self) -> usize;
+    fn tail_handler(&self, program: &mut Peekable<I>, lhs: Expression) -> ParseResult<Expression>;
+    fn precedence(self) -> ParseResult<usize>;
 }
 
 impl<I> TokenHandler<I> for Token where I: Iterator<Item = Token> {
     fn head_handler(&self, program: &mut Peekable<I>) -> ParseResult<Expression> {
         match self {
-            Token::Integer(int_value) => Ok(Some(Expression::Integer(int_value.clone()))),
-            _ => todo!("missing head_handler for :{:?}", self),
+            Token::Integer(int_value) => Ok(Expression::Integer(int_value.clone())),
+            _ => Err(Error::HeadHandlerNotImplemented(self.clone())),
         }
     }
     
-    fn tail_handler(&self, program: &mut Peekable<I>, lhs: ParseResult<Expression>) -> ParseResult<Expression> {
-        todo!("implement tail_handler");
+    fn tail_handler(&self, program: &mut Peekable<I>, lhs: Expression) -> ParseResult<Expression> {
+        match self {
+            Token::Plus => parse_binary_expression(program, lhs, Operator::Add),
+            Token::Minus => parse_binary_expression(program, lhs, Operator::Sub),
+            Token::Star => parse_binary_expression(program, lhs, Operator::Mul),
+            Token::Slash => parse_binary_expression(program, lhs, Operator::Div),
+            _ => Err(Error::TailHandlerNotImplemented(self.clone())),
+        }
     }
 
-    fn precedence(self) -> usize {
-        0 
+    fn precedence(self) -> ParseResult<usize> {
+        match self {
+            Token::Plus | Token::Minus => Ok(1),
+            Token::Star | Token::Slash => Ok(2),
+            _ => Err(Error::NonexistentPrecedence(self.clone()))
+        }
     }
 }
 
@@ -44,21 +57,19 @@ pub fn parse_statements<I>(program: &mut Peekable<I>) -> ParseResult<Vec<Stateme
         }
     }
 
-    Ok(Some(stmts))
+    Ok(stmts)
 }
 
 pub fn parse_expression<I>(program: &mut Peekable<I>, curr_precedence: usize) -> ParseResult<Expression> where I: Iterator<Item = Token> {
-    let mut curr_token = program.next();
-    if curr_token.is_none() { return Ok(None); }
+    let mut curr_token = program.next().ok_or(Error::EmptyExpression)?;
+    let mut lhs = curr_token.head_handler(program)?;
     
-    let mut lhs = curr_token.unwrap().head_handler(program);
-    
-    while program.peek().map_or(0, |tok| <Token as TokenHandler<I>>::precedence(tok.clone())) > curr_precedence {
-        curr_token = Some(program.next().map_or_else(|| Err(Error::UnexpectedEnd) , |tok| Ok(tok))?);
-        lhs = curr_token.unwrap().tail_handler(program, lhs);
+    while program.peek().map_or(0, |tok| <Token as TokenHandler<I>>::precedence(tok.clone()).unwrap_or(0)) > curr_precedence {
+        curr_token = program.next().ok_or(Error::UnexpectedEnd)?;
+        lhs = curr_token.tail_handler(program, lhs)?;
     }
 
-    lhs
+    Ok(lhs)
 }
 
 fn parse_var_assignment<I>(program: &mut Peekable<I>) -> Result<Statement, Error> where I: Iterator<Item = Token> {
@@ -66,10 +77,15 @@ fn parse_var_assignment<I>(program: &mut Peekable<I>) -> Result<Statement, Error
     program.next_if_eq(&Token::Assign).ok_or(Error::MissingAssignmentToken)?;
     
     let expr = parse_expression(program, 0)?;
-       
 
     Ok(Statement::VariableAssignment{
         ident: ident.to_string(),
-        expr: Box::new(expr.ok_or(Error::EmptyExpression)?),
+        expr: Box::new(expr),
     })
+}
+
+fn parse_binary_expression<I>(program: &mut Peekable<I>, lhs: Expression, op: Operator) -> ParseResult<Expression>
+    where I: Iterator<Item = Token> {
+    let rhs = parse_expression(program, 0)?;
+    Ok(Expression::BinaryExpression(Box::new(lhs), op, Box::new(rhs)))
 }
