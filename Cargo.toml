@@ -1,0 +1,10 @@
+[package]
+name = "sand"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[workspace]
+resolver = "1"
+members = [ "crates/parser","crates/tokenizer"]
