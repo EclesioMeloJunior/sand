@@ -17,7 +17,10 @@ pub enum Token {
     Assign,
 
     Plus, Minus,
-    Star, Slash
+    Star, Slash,
+
+    LeftParen,
+    RightParen
 }
 
 impl Token {

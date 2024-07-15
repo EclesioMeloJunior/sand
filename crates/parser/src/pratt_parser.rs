@@ -8,6 +8,7 @@ pub enum Error {
     ExpectedIdent,
     EmptyExpression,
     MissingAssignmentToken,
+    MissingRightParentheses,
     HeadHandlerNotImplemented(Token),
     TailHandlerNotImplemented(Token),
     NonexistentPrecedence(Token),
@@ -25,6 +26,7 @@ impl<I> TokenHandler<I> for Token where I: Iterator<Item = Token> {
     fn head_handler(&self, program: &mut Peekable<I>) -> ParseResult<Expression> {
         match self {
             Token::Integer(int_value) => Ok(Expression::Integer(int_value.clone())),
+            Token::LeftParen => parse_grouped_expression(program),
             _ => Err(Error::HeadHandlerNotImplemented(self.clone())),
         }
     }
@@ -88,4 +90,11 @@ fn parse_binary_expression<I>(program: &mut Peekable<I>, lhs: Expression, op: Op
     where I: Iterator<Item = Token> {
     let rhs = parse_expression(program, 0)?;
     Ok(Expression::BinaryExpression(Box::new(lhs), op, Box::new(rhs)))
+}
+
+fn parse_grouped_expression<I>(program: &mut Peekable<I>) -> ParseResult<Expression>
+    where I: Iterator<Item = Token> {
+    let expr = parse_expression(program, 0);
+    program.next_if_eq(&Token::RightParen).ok_or(Error::MissingRightParentheses)?;
+    expr
 }

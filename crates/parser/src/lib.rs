@@ -41,6 +41,7 @@ mod tests {
 
     #[test]
     fn new_program_from_token_set() {
+        // var a = 10 + 10 * 4
         let tokens = vec![
             Token::Var, 
             Token::Ident(String::from("a")),
@@ -53,13 +54,31 @@ mod tests {
         ];
 
         let mut program = Program::from(tokens);
-        for t in program.clone().into_iter() {   
-            println!("{:?}", t);
-        }
-        
         let mut peekable_program = program.peekable();
         let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
-        println!("{:?}", stmts); 
+        println!("{:?}", stmts);
+    }
+
+    #[test]
+    fn parse_parenthesis_precedence() {
+        // var b = 10 * (5 + 2)
+        let tokens = vec![
+            Token::Var,
+            Token::Ident(String::from("b")),
+            Token::Assign,
+            Token::Integer(10),
+            Token::Star,
+            Token::LeftParen,
+            Token::Integer(5),
+            Token::Plus,
+            Token::Integer(2),
+            Token::RightParen,
+        ];
+
+        let mut program = Program::from(tokens);
+        let mut peekable_program = program.peekable();
+        let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
+        println!("{:?}", stmts);
     }
 }
 
