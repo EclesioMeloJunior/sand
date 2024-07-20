@@ -1,9 +1,12 @@
 mod ast;
+mod types;
 mod pratt_parser;
 
 use std::iter::Iterator;
 use std::convert::From;
 use tokenizer::token::Token;
+use types::Type;
+use ast::{Statement, Operator, Expression};
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -30,7 +33,7 @@ impl Iterator for Program {
 
         let token_at = self.tokens[self.cursor].clone();
         self.cursor += 1;
-        return Some(token_at);
+        Some(token_at)
     }
 }
 
@@ -51,12 +54,28 @@ mod tests {
             Token::Integer(10),
             Token::Star,
             Token::Integer(4),
+            Token::SemiColon,
         ];
 
         let mut program = Program::from(tokens);
         let mut peekable_program = program.peekable();
         let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
-        println!("{:?}", stmts);
+
+        let expected = vec![
+            Statement::VariableAssignment{
+                ident: String::from("a"),
+                expr: Expression::BinaryExpression(
+                    Box::new(Expression::Integer(10)),
+                    Operator::Add,
+                    Box::new(Expression::BinaryExpression(
+                        Box::new(Expression::Integer(10)),
+                        Operator::Mul,
+                        Box::new(Expression::Integer(4)),
+                    )),
+                ),
+            }
+        ];
+        assert_eq!(expected, stmts);
     }
 
     #[test]
@@ -73,12 +92,97 @@ mod tests {
             Token::Plus,
             Token::Integer(2),
             Token::RightParen,
+            Token::SemiColon,
         ];
 
         let mut program = Program::from(tokens);
         let mut peekable_program = program.peekable();
         let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
-        println!("{:?}", stmts);
+        
+        let expected = vec![
+            Statement::VariableAssignment{
+                ident: String::from("b"),
+                expr: Expression::BinaryExpression(
+                    Box::new(Expression::Integer(10)),
+                    Operator::Mul,
+                    Box::new(Expression::BinaryExpression(
+                            Box::new(Expression::Integer(5)),
+                            Operator::Add,
+                            Box::new(Expression::Integer(2)),
+                    )),
+                ),
+            },
+        ];
+
+        assert_eq!(expected, stmts);
+    }
+
+    #[test]
+    fn parse_function_definition() {
+        /*
+         * func main() int {
+         *  var b = 5 + 2;
+         *  println(b);
+         *  return 0;
+         * }
+         */
+
+        let tokens = vec![
+            Token::Func,
+            Token::Ident(String::from("main")),
+            Token::LeftParen,
+            Token::RightParen,
+            Token::I32Type,
+            Token::LeftBraces,
+            Token::Var,
+            Token::Ident(String::from("b")),
+            Token::Assign,
+            Token::Integer(5),
+            Token::Plus,
+            Token::Integer(2),
+            Token::SemiColon,
+            Token::Ident(String::from("println")),
+            Token::LeftParen,
+            Token::Ident(String::from("b")),
+            Token::RightParen,
+            Token::SemiColon,
+            Token::Return,
+            Token::Integer(0),
+            Token::SemiColon,
+            Token::RightBraces,
+        ];
+
+        let expected = vec![
+            Statement::FunctionDefinition{
+                name: String::from("main"),
+                args: vec![],
+                return_ty: types::Type::I32,
+                body: Box::new(vec![
+                    Statement::VariableAssignment{
+                        ident: String::from("b"),
+                        expr: Expression::BinaryExpression(
+                            Box::new(Expression::Integer(5)),
+                            Operator::Add,
+                            Box::new(Expression::Integer(2)),
+                        ),
+                    },
+                    Statement::FunctionCall(
+                        Expression::Call(
+                            Box::new(Expression::Ident(String::from("println"))),
+                            Box::new(vec![
+                                Expression::Ident(String::from("b")),
+                            ]),
+                        )
+                    ),
+                    Statement::Return(Expression::Integer(0)),
+                ]),
+            }
+        ];
+
+        let program = Program::from(tokens);
+        let mut peekable_program = program.peekable();
+        let stmts = pratt_parser::parse_statements(&mut peekable_program).unwrap();
+        assert_eq!(expected, stmts);
     }
 }
 
