@@ -13,7 +13,7 @@ pub enum Expression {
     Ident(String),
     Integer(i32),
     Unary(Box<Expression>),
-    Call(Box<Expression>, Box<Vec<Expression>>),
+    Call(String, Box<Vec<Expression>>),
     BinaryExpression(Box<Expression>, Operator, Box<Expression>),
 }
 
@@ -21,6 +21,7 @@ pub enum Expression {
 pub enum Statement {
     VariableAssignment {
         ident: String,
+        ty: Type,
         expr: Expression,
     },
     FunctionDefinition {

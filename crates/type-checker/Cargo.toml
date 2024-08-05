@@ -1,7 +1,8 @@
 [package]
-name = "parser"
+name = "type-checker"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+parser = { path = '../parser' }
 tokenizer = { path = '../tokenizer' }

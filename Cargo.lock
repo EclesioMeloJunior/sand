@@ -3,6 +3,13 @@
 version = 3
 
 [[package]]
+name = "llvm"
+version = "0.1.0"
+dependencies = [
+ "parser",
+]
+
+[[package]]
 name = "parser"
 version = "0.1.0"
 dependencies = [
@@ -16,3 +23,11 @@ version = "0.1.0"
 [[package]]
 name = "tokenizer"
 version = "0.1.0"
+
+[[package]]
+name = "type-checker"
+version = "0.1.0"
+dependencies = [
+ "parser",
+ "tokenizer",
+]

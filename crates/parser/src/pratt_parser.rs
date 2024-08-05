@@ -1,7 +1,9 @@
-use std::iter::{Peekable, Iterator};
-use tokenizer::token::Token;
-use crate::ast::{Expression, Statement, Operator};
+use crate::ast::{Expression, Operator, Statement};
 use crate::types::Type;
+use crate::Parser;
+use std::any::TypeId;
+use std::iter::{Iterator, Peekable};
+use tokenizer::token::Token;
 
 #[derive(Debug)]
 pub enum Error {
@@ -10,6 +12,7 @@ pub enum Error {
     ExpectedColon,
     ExpectedSemiColon,
     ExpectedParamType,
+    ExpectedVarType,
     ExpectedReturnType,
     ExpectedFunctionCall,
     EmptyExpression,
@@ -26,13 +29,32 @@ pub enum Error {
 
 type ParseResult<T> = Result<T, Error>;
 
-pub trait TokenHandler<I> where I: Iterator<Item = Token> {
+pub struct PrattParser;
+
+impl<I> Parser<Vec<Statement>, I> for PrattParser
+where
+    I: Iterator<Item = Token>,
+{
+    type Error = Error;
+
+    fn parse(program: &mut Peekable<I>) -> Result<Vec<Statement>, Self::Error> {
+        parse_statements(program)
+    }
+}
+
+pub trait TokenHandler<I>
+where
+    I: Iterator<Item = Token>,
+{
     fn head_handler(&self, program: &mut Peekable<I>) -> ParseResult<Expression>;
     fn tail_handler(&self, program: &mut Peekable<I>, lhs: Expression) -> ParseResult<Expression>;
     fn precedence(self) -> ParseResult<usize>;
 }
 
-impl<I> TokenHandler<I> for Token where I: Iterator<Item = Token> {
+impl<I> TokenHandler<I> for Token
+where
+    I: Iterator<Item = Token>,
+{
     fn head_handler(&self, program: &mut Peekable<I>) -> ParseResult<Expression> {
         match self {
             Token::Ident(s) => Ok(Expression::Ident(s.to_string())),
@@ -41,7 +63,7 @@ impl<I> TokenHandler<I> for Token where I: Iterator<Item = Token> {
             _ => Err(Error::HeadHandlerNotImplemented(self.clone())),
         }
     }
-    
+
     fn tail_handler(&self, program: &mut Peekable<I>, lhs: Expression) -> ParseResult<Expression> {
         match self {
             Token::Plus => parse_binary_expression(program, lhs, Operator::Add),
@@ -59,12 +81,15 @@ impl<I> TokenHandler<I> for Token where I: Iterator<Item = Token> {
             Token::Plus | Token::Minus => Ok(1),
             Token::Star | Token::Slash => Ok(2),
             Token::LeftParen => Ok(3),
-            _ => Err(Error::NonexistentPrecedence(self.clone()))
+            _ => Err(Error::NonexistentPrecedence(self.clone())),
         }
     }
 }
 
-pub fn parse_statements<I>(program: &mut Peekable<I>) -> ParseResult<Vec<Statement>> where I: Iterator<Item = Token> {
+pub fn parse_statements<I>(program: &mut Peekable<I>) -> ParseResult<Vec<Statement>>
+where
+    I: Iterator<Item = Token>,
+{
     let mut stmts = Vec::new();
     while let Some(token) = program.peek() {
         match *token {
@@ -76,8 +101,10 @@ pub fn parse_statements<I>(program: &mut Peekable<I>) -> ParseResult<Vec<Stateme
                 // consume the return token
                 program.next().unwrap();
                 stmts.push(Statement::Return(parse_expression(program, 0)?));
-                program.next_if_eq(&Token::SemiColon).ok_or(Error::ExpectedSemiColon)?;
-            },
+                program
+                    .next_if_eq(&Token::SemiColon)
+                    .ok_or(Error::ExpectedSemiColon)?;
+            }
             _ => todo!("statement not supported yet: {:?}", token),
         }
     }
@@ -85,11 +112,20 @@ pub fn parse_statements<I>(program: &mut Peekable<I>) -> ParseResult<Vec<Stateme
     Ok(stmts)
 }
 
-pub fn parse_expression<I>(program: &mut Peekable<I>, curr_precedence: usize) -> ParseResult<Expression> where I: Iterator<Item = Token> {
+pub fn parse_expression<I>(
+    program: &mut Peekable<I>,
+    curr_precedence: usize,
+) -> ParseResult<Expression>
+where
+    I: Iterator<Item = Token>,
+{
     let mut curr_token = program.next().ok_or(Error::EmptyExpression)?;
     let mut lhs = curr_token.head_handler(program)?;
-    
-    while program.peek().map_or(0, |tok| <Token as TokenHandler<I>>::precedence(tok.clone()).unwrap_or(0)) > curr_precedence {
+
+    while program.peek().map_or(0, |tok| {
+        <Token as TokenHandler<I>>::precedence(tok.clone()).unwrap_or(0)
+    }) > curr_precedence
+    {
         curr_token = program.next().ok_or(Error::UnexpectedEnd)?;
         lhs = curr_token.tail_handler(program, lhs)?;
     }
@@ -97,18 +133,27 @@ pub fn parse_expression<I>(program: &mut Peekable<I>, curr_precedence: usize) ->
     Ok(lhs)
 }
 
-fn parse_func_definition<I>(program: &mut Peekable<I>) -> ParseResult<Statement> 
-where I: Iterator<Item = Token> {
+fn parse_func_definition<I>(program: &mut Peekable<I>) -> ParseResult<Statement>
+where
+    I: Iterator<Item = Token>,
+{
     program.next_if_eq(&Token::Func).unwrap();
-    let ident = program.next_if(|tok| tok.is_ident()).ok_or(Error::ExpectedIdent)?;
+    let ident = program
+        .next_if(|tok| tok.is_ident())
+        .ok_or(Error::ExpectedIdent)?;
     let fn_args = parse_func_args(program)?;
-    let return_ty = Type::try_from(program.next_if(|tok| tok.is_type())
-        .ok_or(Error::ExpectedReturnType)?)?;
+    let return_ty = Type::try_from(
+        program
+            .next_if(|tok| tok.is_type())
+            .ok_or(Error::ExpectedReturnType)?,
+    )?;
 
-    program.next_if_eq(&Token::LeftBraces).ok_or(Error::MissingLeftBraces)?;
+    program
+        .next_if_eq(&Token::LeftBraces)
+        .ok_or(Error::MissingLeftBraces)?;
     let body = parse_statements(program)?;
 
-    Ok(Statement::FunctionDefinition{
+    Ok(Statement::FunctionDefinition {
         name: ident.to_string(),
         args: fn_args,
         return_ty,
@@ -117,8 +162,12 @@ where I: Iterator<Item = Token> {
 }
 
 fn parse_func_args<I>(program: &mut Peekable<I>) -> Result<Vec<(String, Type)>, Error>
-where I: Iterator<Item = Token> {
-    program.next_if_eq(&Token::LeftParen).ok_or(Error::MissingLeftParentheses)?;
+where
+    I: Iterator<Item = Token>,
+{
+    program
+        .next_if_eq(&Token::LeftParen)
+        .ok_or(Error::MissingLeftParentheses)?;
     let mut args: Vec<(String, Type)> = vec![];
     let mut should_end = false;
     loop {
@@ -128,9 +177,14 @@ where I: Iterator<Item = Token> {
             return Err(Error::MissingRightParentheses);
         }
 
-        let param_name = program.next_if(|tok| tok.is_ident()).ok_or(Error::ExpectedIdent)?;
-        program.next_if_eq(&Token::Colon).ok_or(Error::ExpectedColon)?;
-        let param_type = program.next_if(|tok| tok.is_type())
+        let param_name = program
+            .next_if(|tok| tok.is_ident())
+            .ok_or(Error::ExpectedIdent)?;
+        program
+            .next_if_eq(&Token::Colon)
+            .ok_or(Error::ExpectedColon)?;
+        let param_type = program
+            .next_if(|tok| tok.is_type())
             .ok_or(Error::ExpectedParamType)?;
         args.push((param_name.to_string(), Type::try_from(param_type)?));
 
@@ -142,30 +196,52 @@ where I: Iterator<Item = Token> {
             should_end = true;
         }
     }
-        
+
     Ok(args)
 }
 
 fn parse_var_assignment<I>(program: &mut Peekable<I>) -> ParseResult<Statement>
-where I: Iterator<Item = Token> {
+where
+    I: Iterator<Item = Token>,
+{
     program.next_if_eq(&Token::Var).unwrap();
-    let ident = program.next_if(|tok| tok.is_ident()).ok_or(Error::ExpectedIdent)?;
-    program.next_if_eq(&Token::Assign).ok_or(Error::MissingAssignmentToken)?;
-    
-    let expr = parse_expression(program, 0)?;
-    program.next_if_eq(&Token::SemiColon).ok_or(Error::ExpectedSemiColon)?;
+    let ident = program
+        .next_if(|tok| tok.is_ident())
+        .ok_or(Error::ExpectedIdent)?;
 
-    Ok(Statement::VariableAssignment{
+    program
+        .next_if_eq(&Token::Colon)
+        .ok_or(Error::ExpectedVarType)?;
+
+    let var_type = Type::try_from(
+        program
+            .next_if(|tok| tok.is_type())
+            .ok_or(Error::ExpectedVarType)?,
+    )?;
+
+    program
+        .next_if_eq(&Token::Assign)
+        .ok_or(Error::MissingAssignmentToken)?;
+
+    let expr = parse_expression(program, 0)?;
+    program
+        .next_if_eq(&Token::SemiColon)
+        .ok_or(Error::ExpectedSemiColon)?;
+
+    Ok(Statement::VariableAssignment {
         ident: ident.to_string(),
+        ty: var_type,
         expr,
     })
 }
 
 fn parse_function_call_stmt<I>(program: &mut Peekable<I>) -> ParseResult<Statement>
-where I: Iterator<Item = Token> {
+where
+    I: Iterator<Item = Token>,
+{
     let expr = parse_expression(program, 0)?;
     match expr {
-        Expression::Call(..) => {},
+        Expression::Call(..) => {}
         _ => return Err(Error::ExpectedFunctionCall),
     }
     program.next_if_eq(&Token::SemiColon);
@@ -173,26 +249,42 @@ where I: Iterator<Item = Token> {
     Ok(Statement::FunctionCall(expr))
 }
 
-fn parse_binary_expression<I>(program: &mut Peekable<I>, lhs: Expression, op: Operator) -> ParseResult<Expression>
-    where I: Iterator<Item = Token> {
+fn parse_binary_expression<I>(
+    program: &mut Peekable<I>,
+    lhs: Expression,
+    op: Operator,
+) -> ParseResult<Expression>
+where
+    I: Iterator<Item = Token>,
+{
     let rhs = parse_expression(program, 0)?;
-    Ok(Expression::BinaryExpression(Box::new(lhs), op, Box::new(rhs)))
+    Ok(Expression::BinaryExpression(
+        Box::new(lhs),
+        op,
+        Box::new(rhs),
+    ))
 }
 
 fn parse_grouped_expression<I>(program: &mut Peekable<I>) -> ParseResult<Expression>
-    where I: Iterator<Item = Token> {
+where
+    I: Iterator<Item = Token>,
+{
     let expr = parse_expression(program, 0);
-    program.next_if_eq(&Token::RightParen).ok_or(Error::MissingRightParentheses)?;
+    program
+        .next_if_eq(&Token::RightParen)
+        .ok_or(Error::MissingRightParentheses)?;
     expr
 }
 
 fn parse_call_expression<I>(program: &mut Peekable<I>, lhs: Expression) -> ParseResult<Expression>
-where I: Iterator<Item = Token> {
+where
+    I: Iterator<Item = Token>,
+{
     // ensure that before the open paren there is
     // an identifier and not other kind of expression
-    match lhs {
-        Expression::Ident(_) => {},
-        _ => return Err(Error::MissingFunctionCallIdentifier)
+    let fn_name = match lhs {
+        Expression::Ident(fn_name) => fn_name,
+        _ => return Err(Error::MissingFunctionCallIdentifier),
     };
 
     let mut call_params: Vec<Expression> = vec![];
@@ -210,5 +302,5 @@ where I: Iterator<Item = Token> {
         }
     }
 
-    Ok(Expression::Call(Box::new(lhs), Box::new(call_params)))
+    Ok(Expression::Call(fn_name, Box::new(call_params)))
 }
