@@ -1,6 +1,8 @@
+use std::fmt::Display;
+
 use crate::types::Type;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Operator {
     Add,
     Sub,
@@ -8,11 +10,22 @@ pub enum Operator {
     Div,
 }
 
+impl Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
+            Self::Mul => write!(f, "*"),
+            Self::Div => write!(f, "/"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(String),
     Integer(i32),
-    Unary(Box<Expression>),
+    Unary(Operator, Box<Expression>),
     Call(String, Box<Vec<Expression>>),
     BinaryExpression(Box<Expression>, Operator, Box<Expression>),
 }

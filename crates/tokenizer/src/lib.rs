@@ -81,6 +81,7 @@ fn tokenize<'a>(stream: &mut Peekable<Chars<'a>>) -> Vec<Token> {
                     "var" => Token::Var,
                     "func" => Token::Func,
                     "int" => Token::I32Type,
+                    "void" => Token::Void,
                     "return" => Token::Return,
                     _ => Token::Ident(current_lexeme.clone()),
                 };

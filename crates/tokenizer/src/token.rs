@@ -4,7 +4,8 @@ use std::string::ToString;
 pub enum Token {
     Const,
     Var,
-    
+
+    Void,
     I32Type,
     Integer(i32),
 
@@ -17,8 +18,10 @@ pub enum Token {
     Comma,
     Assign,
 
-    Plus, Minus,
-    Star, Slash,
+    Plus,
+    Minus,
+    Star,
+    Slash,
 
     LeftParen,
     RightParen,
@@ -36,7 +39,7 @@ impl Token {
 
     pub fn is_type(&self) -> bool {
         match self {
-            Token::I32Type => true,
+            Token::I32Type | Token::Void => true,
             _ => false,
         }
     }
@@ -46,7 +49,7 @@ impl ToString for Token {
     fn to_string(&self) -> String {
         match self {
             Token::Ident(s) => s.clone(),
-            _ => String::from("<?>")
+            _ => String::from("<?>"),
         }
     }
 }

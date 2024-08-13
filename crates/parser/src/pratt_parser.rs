@@ -211,7 +211,7 @@ where
 
     program
         .next_if_eq(&Token::Colon)
-        .ok_or(Error::ExpectedVarType)?;
+        .ok_or(Error::ExpectedColon)?;
 
     let var_type = Type::try_from(
         program
