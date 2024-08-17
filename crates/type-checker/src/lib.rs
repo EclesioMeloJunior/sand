@@ -14,7 +14,7 @@ use parser::{
 };
 
 #[derive(Debug)]
-enum CheckError {
+pub enum CheckError {
     ReturnOutsideScope,
     VariableAlreadyDefined(String, Symbol),
     // 0: variable's type
@@ -88,7 +88,7 @@ impl Display for CheckError {
 }
 
 #[derive(Debug, Clone)]
-enum Scope {
+pub enum Scope {
     Global,
     Local(String),
 }
@@ -103,7 +103,7 @@ impl Display for Scope {
 }
 
 #[derive(Debug, Clone)]
-enum Symbol {
+pub enum Symbol {
     Function { args: Vec<Type>, return_ty: Type },
     Variable { ty: Type },
 }
@@ -112,11 +112,11 @@ impl Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Symbol::Function { args, return_ty } => {
-                write!(f, "func ( ");
+                write!(f, "func ( ")?;
                 for ty in args {
-                    write!(f, "{}", ty);
+                    write!(f, "{}", ty)?;
                 }
-                write!(f, " ) ");
+                write!(f, " ) ")?;
                 write!(f, "{}", return_ty)
             }
             Symbol::Variable { ty } => write!(f, "var {}", ty),
@@ -133,7 +133,7 @@ impl Symbol {
     }
 }
 
-trait Lookup {
+pub trait Lookup {
     fn lookup(&self, scope: &Scope, sym_name: &String) -> Option<&Symbol> {
         match scope {
             Scope::Global => self.global_lookup(sym_name),
@@ -147,15 +147,15 @@ trait Lookup {
 
 type SymbolTable = HashMap<String, Symbol>;
 
-#[derive(Debug, Default)]
-struct Checker {
-    symbol_table: SymbolTable,
+#[derive(Debug, Default, Clone)]
+pub struct Symbols {
+    global_table: SymbolTable,
     scope_table: HashMap<String, SymbolTable>,
 }
 
-impl Checker {
+impl Symbols {
     fn add_global_symbol(&mut self, name: String, sym: Symbol) -> Result<(), CheckError> {
-        match self.symbol_table.try_insert(name.clone(), sym) {
+        match self.global_table.try_insert(name.clone(), sym) {
             Ok(_) => Ok(()),
             Err(occ) => Err(CheckError::VariableAlreadyDefined(name, occ.value)),
         }
@@ -182,9 +182,9 @@ impl Checker {
     }
 }
 
-impl Lookup for Checker {
+impl Lookup for Symbols {
     fn global_lookup(&self, name: &String) -> Option<&Symbol> {
-        self.symbol_table.get(name)
+        self.global_table.get(name)
     }
 
     fn scoped_lookup(&self, scope: &String, sym_name: &String) -> Option<&Symbol> {
@@ -194,21 +194,17 @@ impl Lookup for Checker {
     }
 }
 
-pub fn default_checker(stmts: Vec<Statement>) -> Result<(), CheckError> {
-    let mut checker: Checker = Default::default();
-
+pub fn default_checker(stmts: &Vec<Statement>) -> Result<Symbols, CheckError> {
+    let mut checker: Symbols = Default::default();
     build_symbol_table(&stmts, Scope::Global, &mut checker)?;
-    println!("=> {:?}", checker.symbol_table);
-    println!("=> {:?}", checker.scope_table);
-
     verify_statements(&stmts, &mut checker, None, Scope::Global)?;
-    Ok(())
+    Ok(checker.clone())
 }
 
 fn build_symbol_table(
     stmts: &[Statement],
     scope: Scope,
-    checker: &mut Checker,
+    checker: &mut Symbols,
 ) -> Result<(), CheckError> {
     for stmt in stmts {
         match stmt {
@@ -258,7 +254,7 @@ fn build_symbol_table(
 
 fn verify_statements(
     stmts: &[Statement],
-    checker: &Checker,
+    checker: &Symbols,
     return_ty: Option<&Type>,
     scope: Scope,
 ) -> Result<(), CheckError> {

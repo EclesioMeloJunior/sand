@@ -21,6 +21,7 @@ pub enum Error {
     MissingRightParentheses,
     MissingFunctionCallIdentifier,
     MissingLeftBraces,
+    MissingRightBraces,
     UnexpectedTokenAsType(Token),
     HeadHandlerNotImplemented(Token),
     TailHandlerNotImplemented(Token),
@@ -141,6 +142,7 @@ where
     let ident = program
         .next_if(|tok| tok.is_ident())
         .ok_or(Error::ExpectedIdent)?;
+
     let fn_args = parse_func_args(program)?;
     let return_ty = Type::try_from(
         program
@@ -152,6 +154,10 @@ where
         .next_if_eq(&Token::LeftBraces)
         .ok_or(Error::MissingLeftBraces)?;
     let body = parse_statements(program)?;
+
+    program
+        .next_if_eq(&Token::RightBraces)
+        .ok_or(Error::MissingRightBraces)?;
 
     Ok(Statement::FunctionDefinition {
         name: ident.to_string(),

@@ -3,10 +3,12 @@
 version = 3
 
 [[package]]
-name = "llvm"
+name = "code-gen"
 version = "0.1.0"
 dependencies = [
  "parser",
+ "tokenizer",
+ "type-checker",
 ]
 
 [[package]]
