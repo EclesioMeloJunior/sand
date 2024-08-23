@@ -197,6 +197,7 @@ impl Lookup for Symbols {
 pub fn default_checker(stmts: &Vec<Statement>) -> Result<Symbols, CheckError> {
     let mut checker: Symbols = Default::default();
     build_symbol_table(&stmts, Scope::Global, &mut checker)?;
+
     verify_statements(&stmts, &mut checker, None, Scope::Global)?;
     Ok(checker.clone())
 }
@@ -287,21 +288,10 @@ fn verify_statements(
                 continue;
             }
             Statement::Return(expr) => {
-                return match &scope {
-                    Scope::Local(scope_name) => {
-                        let expr_type = type_of(expr, checker, &scope)?;
-                        if &expr_type == return_ty.unwrap() {
-                            continue;
-                        }
-
-                        Err(CheckError::ReturnTypeMismatch(
-                            scope_name.clone(),
-                            expr_type.clone(),
-                            return_ty.unwrap().clone(),
-                        ))
-                    }
-                    _ => Err(CheckError::ReturnOutsideScope),
-                };
+                let expr_type = type_of(expr, checker, &scope)?;
+                if &expr_type == return_ty.unwrap() {
+                    continue;
+                }
             }
             _ => todo!(),
         }
@@ -350,40 +340,43 @@ fn type_of(expr: &Expression, checker: &impl Lookup, scope: &Scope) -> Result<Ty
             }
         }
         Expression::Call(fn_name, call_args) => {
-            if let Some(symbol) = checker.lookup(scope, fn_name) {
-                match symbol {
-                    Symbol::Function {
-                        args: params,
-                        return_ty,
-                        ..
-                    } => {
-                        if call_args.len() != params.len() {
-                            return Err(CheckError::WrongParamLen(
-                                fn_name.clone(),
-                                call_args.len(),
-                                params.len(),
-                            ));
-                        }
+            let symbol = {
+                checker
+                    .lookup(scope, fn_name)
+                    .or_else(|| checker.lookup(&Scope::Global, fn_name))
+                    .ok_or_else(|| CheckError::SymbolNotFound(fn_name.clone()))?
+            };
 
-                        let mut args_type: Vec<Type> = Vec::with_capacity(call_args.len());
-                        for arg in call_args.as_ref() {
-                            args_type.push(type_of(arg, checker, scope)?);
-                        }
-
-                        if !params.eq(&args_type) {
-                            return Err(CheckError::WrongParamsType(
-                                fn_name.clone(),
-                                args_type.clone(),
-                                params.clone(),
-                            ));
-                        }
-                        return Ok(return_ty.clone());
+            match symbol {
+                Symbol::Function {
+                    args: params,
+                    return_ty,
+                    ..
+                } => {
+                    if call_args.len() != params.len() {
+                        return Err(CheckError::WrongParamLen(
+                            fn_name.clone(),
+                            call_args.len(),
+                            params.len(),
+                        ));
                     }
-                    _ => return Err(CheckError::NotCallable(fn_name.clone())),
-                };
-            }
 
-            Err(CheckError::SymbolNotFound(fn_name.clone()))
+                    let mut args_type: Vec<Type> = Vec::with_capacity(call_args.len());
+                    for arg in call_args.as_ref() {
+                        args_type.push(type_of(arg, checker, scope)?);
+                    }
+
+                    if !params.eq(&args_type) {
+                        return Err(CheckError::WrongParamsType(
+                            fn_name.clone(),
+                            args_type.clone(),
+                            params.clone(),
+                        ));
+                    }
+                    return Ok(return_ty.clone());
+                }
+                _ => return Err(CheckError::NotCallable(fn_name.clone())),
+            };
         }
     }
 }
@@ -410,7 +403,7 @@ mod tests {
         let mut program = Program::from(tokens).peekable();
         let raw_ast = pratt_parser::PrattParser::parse(&mut program).unwrap();
 
-        match default_checker(raw_ast) {
+        match default_checker(&raw_ast) {
             Err(err) => {
                 println!("{}", err);
                 assert!(false);

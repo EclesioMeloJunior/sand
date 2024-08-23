@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::marker::Copy;
 
 use crate::types::Type;
 
@@ -21,7 +22,7 @@ impl Display for Operator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Ident(String),
     Integer(i32),
@@ -30,7 +31,7 @@ pub enum Expression {
     BinaryExpression(Box<Expression>, Operator, Box<Expression>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     VariableAssignment {
         ident: String,

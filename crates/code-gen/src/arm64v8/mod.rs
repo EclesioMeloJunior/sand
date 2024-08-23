@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use parser::{
     ast::{Expression, Statement},
     types::Type,
@@ -13,23 +15,10 @@ use type_checker::Lookup;
 
 pub struct Arm64v8;
 
-enum GenError {
+#[derive(Debug)]
+pub enum GenError {
     MissingMainFn,
     MainShouldReturnI32(Type),
-}
-
-enum Section {
-    Data,
-    BSS,
-    Text(Vec<LabeledInstruction>),
-}
-
-pub struct LabeledInstruction {}
-
-pub struct Module<L: Lookup> {
-    ast: Vec<Statement>,
-    symbol_table: L,
-    sections: Vec<Section>,
 }
 
 struct FunctionDefinition {
@@ -39,8 +28,33 @@ struct FunctionDefinition {
     body: Box<Vec<Statement>>,
 }
 
-impl From<Statement> for FunctionDefinition {
-    fn from(value: Statement) -> Self {}
+enum Section {
+    Data,
+    BSS,
+    Text(TextMetadata, Vec<LabeledInstruction>),
+}
+
+#[derive(Default)]
+pub struct TextMetadata {
+    global: String,
+    align: usize,
+}
+
+pub struct LabeledInstruction {
+    label: String,
+    instruction: String,
+}
+
+#[derive(Default)]
+pub struct TextSection {
+    metadata: TextMetadata,
+    labeled_inst: Vec<LabeledInstruction>,
+}
+
+pub struct Module<L: Lookup> {
+    ast: Vec<Statement>,
+    symbol_table: L,
+    text_section: TextSection,
 }
 
 impl<L> Module<L>
@@ -51,7 +65,7 @@ where
         Module {
             ast,
             symbol_table: sym_table,
-            sections: Vec::new(),
+            text_section: Default::default(),
         }
     }
 
@@ -62,15 +76,36 @@ where
     fn start_from_main(&mut self) -> Result<(), GenError> {
         let stmts = &self.ast;
         let main_fn = stmts.into_iter().find_map(|p| match p {
-            Statement::FunctionDefinition { name, .. } => return Some(FunctionDefinition { name }),
+            Statement::FunctionDefinition {
+                name,
+                args,
+                return_ty,
+                body,
+            } if name.eq(&String::from("main")) => {
+                return Some(FunctionDefinition {
+                    name: name.to_string(),
+                    args: args.clone(),
+                    return_ty: return_ty.clone(),
+                    body: body.clone(),
+                })
+            }
             _ => None,
         });
 
-        match main_fn {
-            Some(main_fn_definition) => main_fn_definition,
-            None => return Err(GenError::MissingMainFn),
+        if let Some(main) = main_fn {
+            self.text_section.metadata = TextMetadata {
+                global: String::from("_start"),
+                align: 4,
+            };
+
+            // TODO: generate machine code to capture the CLI args
+            return self.generate_code_for(main);
         }
 
+        Err(GenError::MissingMainFn)
+    }
+
+    fn generate_code_for(&mut self, fn_def: FunctionDefinition) -> Result<(), GenError> {
         Ok(())
     }
 }
@@ -100,8 +135,8 @@ mod test {
         let raw_ast = pratt_parser::PrattParser::parse(&mut program).unwrap();
 
         let symbols = default_checker(&raw_ast).unwrap();
-        let module = Module::new(raw_ast, symbols);
+        let mut module = Module::new(raw_ast, symbols);
 
-        module.generate();
+        module.generate().unwrap()
     }
 }
